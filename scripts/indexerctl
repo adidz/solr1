@@ -1,0 +1,67 @@
+#!/bin/bash
+
+SCRIPT_PATH=$(dirname  $0)
+SCRIPT_FILE=$(basename $0)
+SCRIPT_ENV=""
+
+function displayUsage {
+
+cat << EOF >&2
+
+Usage: ${SCRIPT_FILE} -e [environment] start/stop/restart
+
+This script is used to control the execution of the SOLR indexer queue poppers.   A single instance is required for each application
+server that will post messages to (re)index documents for the search index.
+
+EOF
+
+}
+
+function startIndexer {
+
+    ### start the specified indexer queue popper
+    exec /usr/bin/java -Dapp.env=${SCRIPT_ENV} \
+                       -Dindexer.config=${SCRIPT_PATH}/etc/indexer.properties \
+                       -Djava.util.logging.config.file=${SCRIPT_PATH}/etc/logging-${SCRIPT_ENV}.properties \
+                       -jar ${SCRIPT_PATH}/lib/indexer.jar 2>&1 > /var/log/indexer/stdout-${SCRIPT_ENV}.log &
+    ### record the process id of the started queue popper
+    echo $! > /var/run/solr/indexer-${SCRIPT_ENV}.pid
+
+}
+
+function stopIndexer {
+    if [ -f /var/run/solr/indexer-${SCRIPT_ENV}.pid ]
+    then
+        kill -9 $( cat /var/run/solr/indexer-${SCRIPT_ENV}.pid ) && rm /var/run/solr/indexer-${SCRIPT_ENV}.pid
+    fi
+}
+
+### Process command line arguments
+while getopts "he:" OPTION
+do
+  case $OPTION in
+    h)
+       displayUsage && exit 1
+       ;;
+    e) 
+       SCRIPT_ENV="${OPTARG}"  ### production/staging/development ....
+       ;;       
+  esac
+done
+
+shift $(($OPTIND - 1))
+### Set the action list to any remaining arguments that were passed on the command line.  
+ACTION="$*"
+
+case $ACTION in
+    start) 
+        startIndexer
+    ;;
+    stop) 
+        stopIndexer
+    ;;
+    restart) 
+        stopIndexer
+        startIndexer
+    ;;
+esac

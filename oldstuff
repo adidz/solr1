@@ -1,0 +1,30 @@
+(defn index-places [places]
+  (zipmap (map #(% :id) places) places))
+
+(defn sql-ids [places]
+  "Build a string for use in a SQL query around place IDs; handles place_id in (...), since JDBC doesn't"
+  (str-join \, (map #(str "'" % "'") (keys places))))
+
+(defn select-all [query]
+  (println query)
+  (sql/with-connection *db*
+    (sql/with-query-results res
+      [query]
+      (doall (println res)))))
+
+(defn load-all-details [sql_ids places]
+  (sql/with-connection *db*
+    (sql/with-query-results res
+      [(str "select place_id, attribute_definition, value from place_attributes pa, place_values pv
+                 where place_id in (" sql_ids ") and pa.id = pv.place_attribute_id
+                 order by place_id, attribute_definition, value")]
+      (for [detail (doall res)]
+        (let [definition (get detail :attribute_definition)
+              place (get places (detail :place_id))
+              details (get place :details {})
+              existing (get details definition [])
+              ]
+        (assoc details definition (conj existing (detail :value))))))))
+
+
+
